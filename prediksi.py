@@ -151,7 +151,7 @@ def show():
                     # Bagian 6: Penjelasan Kategori MAPE
                     st.markdown("---\n### 📚 Kategori MAPE (Berdasarkan Skripsi Referensi)")
                     st.table(pd.DataFrame({
-                        "MAPE (%)": ["<10", "10-20", "20-50", ">50"],
+                        "MAPE (%)": ["<10", "10-20", "20-50", "++50"],
                         "Kategori": ["Sangat Akurat", "Baik", "Cukup", "Tidak Akurat"],
                         "Interpretasi": [
                             "Prediksi hampir sempurna untuk keputusan strategis",
@@ -184,28 +184,6 @@ def show():
                 ax.grid(True, linestyle='--', alpha=0.7)
                 st.pyplot(fig)
                 
-                # # ===== Tabel Evaluasi Per Tahun =====
-                # st.subheader("📋 Detail Evaluasi per Tahun")
-                # eval_display = eval_data.rename(columns={
-                #     'tahun': 'Tahun',
-                #     'banjir': 'Aktual',
-                #     'prediksi': 'Prediksi',
-                #     'mape': 'MAPE (%)'
-                # })
-                # eval_display['Evaluasi'] = np.select(
-                #     [
-                #         eval_display['MAPE (%)'] < 10,
-                #         eval_display['MAPE (%)'] < 20,
-                #         eval_display['MAPE (%)'] < 50
-                #     ],
-                #     [
-                #         "Sangat Akurat",
-                #         "Baik",
-                #         "Cukup"
-                #     ],
-                #     default="Tidak Akurat"
-                # )
-                # st.table(eval_display[['Tahun', 'Aktual', 'Prediksi', 'MAPE (%)', 'Evaluasi']])
             else:
                 st.warning("⚠️ Belum ada tahun yang bisa diprediksi (butuh minimal 3 tahun data historis)")
         else:
