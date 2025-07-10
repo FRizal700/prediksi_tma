@@ -7,7 +7,7 @@ from datetime import datetime
 
 # Konfigurasi halaman - sembunyikan sidebar secara permanen
 st.set_page_config(
-    page_title="Sistem Prediksi Banjir",
+    page_title="Sistem Prediksi Jumlah Banjir",
     layout="centered",
     initial_sidebar_state="collapsed"
 )
@@ -67,7 +67,7 @@ def authenticate(username, password):
 
 # Halaman Login
 def show_login():
-    st.title("🔐 Login Sistem Prediksi Banjir")
+    st.title("🔐 Login Sistem Prediksi Jumlah Banjir")
     
     with st.form("login_form"):
         username = st.text_input("Username")

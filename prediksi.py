@@ -1,203 +1,194 @@
-# prediksi.py (Versi Diperbarui)
 import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import mean_absolute_percentage_error
-import sqlite3
+from sklearn.metrics import mean_absolute_percentage_error, mean_absolute_error, mean_squared_error
+
 
 def show():
     st.title("🔮 Prediksi Banjir")
 
-    # ===== Fungsi Utama =====
-    def load_data():
-        conn = sqlite3.connect('flood_prediction.db')
-        query = "SELECT tanggal, tma_max FROM tma_data"
-        df = pd.read_sql(query, conn, parse_dates=['tanggal'])
-        conn.close()
-        
-        if not df.empty:
-            df['tahun'] = df['tanggal'].dt.year
-            df['banjir'] = (df['tma_max'] > 1.6).astype(int)
-            yearly_data = df.groupby('tahun')['banjir'].sum().reset_index()
-            return yearly_data
-        return None
+    def calculate_moving_average(data, window=3):
+        return data.rolling(window=window, min_periods=1).mean()
 
-    # ===== Tampilan Konten =====
-    data = load_data()
-    
-    if data is not None and len(data) >= 4:  # Minimal 3 tahun untuk prediksi
-        # ===== Input Tahun Prediksi =====
-        available_years = sorted(data['tahun'].unique())
-        last_actual_year = max(available_years)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            start_pred_year = st.number_input(
-                "Mulai prediksi dari tahun", 
-                min_value=min(available_years)+3, 
-                max_value=last_actual_year+5,
-                value=last_actual_year+1,
-                help="Tahun pertama yang akan diprediksi"
-            )
-        
-        with col2:
-            end_pred_year = st.number_input(
-                "Sampai tahun", 
-                min_value=start_pred_year, 
-                max_value=last_actual_year+10,
-                value=last_actual_year+1,
-                help="Tahun terakhir prediksi"
-            )
+    def calculate_mape(actual, predicted):
+        actual = np.array(actual)
+        predicted = np.array(predicted)
+        mask = actual != 0
+        if sum(mask) == 0:
+            return float('inf')
+        return mean_absolute_percentage_error(actual[mask], predicted[mask]) * 100
 
-        # ===== Proses Prediksi =====
-        pred_years = range(start_pred_year, end_pred_year+1)
-        all_years = range(min(available_years), end_pred_year+1)
+    if 'current_data' in st.session_state:
+        df = st.session_state['current_data']
+        df['banjir'] = (df['tma_max'] > 1.6).astype(int)
+        yearly_floods = df.groupby('tahun')['banjir'].sum().reset_index()
         
-        # Buat dataframe lengkap
-        full_df = pd.DataFrame({'tahun': all_years})
-        full_df = full_df.merge(data, on='tahun', how='left')
+        # ===== Otomatis deteksi tahun tersedia =====
+        available_years = sorted(yearly_floods['tahun'].unique())
+        min_year = min(available_years)
+        max_year = max(available_years)
         
-        # Hitung prediksi (3-MA)
-        full_df['prediksi'] = full_df['banjir'].rolling(3).mean().shift(1)
-        
-        # Pisahkan data aktual dan prediksi
-        actual_data = full_df[full_df['tahun'] <= last_actual_year].copy()
-        pred_data = full_df[full_df['tahun'].isin(pred_years)].copy()
-        
-        # ===== Hitung MAPE hanya untuk data aktual =====
-        eval_data = actual_data.dropna(subset=['prediksi'])
-        if not eval_data.empty:
-            eval_data['mape'] = (abs(eval_data['banjir'] - eval_data['prediksi']) / eval_data['banjir']) * 100
-            mape = eval_data['mape'].mean()
-        else:
-            mape = None
-
-        # ===== Tampilkan Hasil =====
-        st.subheader("📈 Hasil Prediksi")
-        
-        # Gabungkan data untuk tampilan
-        display_df = full_df[['tahun', 'banjir', 'prediksi']].copy()
-        display_df['tipe'] = np.where(
-            display_df['tahun'] <= last_actual_year, 
-            'Aktual', 
-            'Prediksi'
-        )
-        
-        # Format tabel
-        styled_df = display_df.rename(columns={
-            'tahun': 'Tahun',
-            'banjir': 'Hari Banjir Aktual',
-            'prediksi': 'Prediksi (3-MA)',
-            'tipe': 'Jenis Data'
-        })
-        
-        st.dataframe(
-            styled_df.style.format({
-                'Hari Banjir Aktual': '{:.0f}',
-                'Prediksi (3-MA)': '{:.1f}'
-            }),
-            height=400
-        )
-
-        # ===== Visualisasi =====
-        fig, ax = plt.subplots(figsize=(10, 5))
-        
-        # Plot data aktual
-        ax.plot(
-            actual_data['tahun'], 
-            actual_data['banjir'], 
-            'bo-', 
-            label='Aktual'
-        )
-        
-        # Plot prediksi
-        ax.plot(
-            pred_data['tahun'], 
-            pred_data['prediksi'], 
-            'r--o', 
-            label='Prediksi'
-        )
-        
-        # Anotasi nilai
-        for _, row in actual_data.iterrows():
-            ax.text(
-                row['tahun'], 
-                row['banjir']+2, 
-                f"{row['banjir']:.0f}", 
-                ha='center'
-            )
-        
-        for _, row in pred_data.iterrows():
-            ax.text(
-                row['tahun'], 
-                row['prediksi']-2, 
-                f"{row['prediksi']:.1f}", 
-                ha='center', 
-                color='red'
-            )
-        
-        ax.set_title('Prediksi Hari Banjir Tahunan')
-        ax.set_xlabel('Tahun')
-        ax.set_ylabel('Jumlah Hari Banjir')
-        ax.legend()
-        ax.grid(True)
-        st.pyplot(fig)
-
-        # ===== Tampilkan Metrik =====
-        if mape is not None:
-            st.subheader("📊 Evaluasi Akurasi Prediksi")
+        # ===== Hitung range tahun prediksi =====
+        if len(available_years) >= 4:  # Minimal 3 tahun training + 1 tahun prediksi
+            validation_data = yearly_floods.copy()
             
-            col1, col2 = st.columns(2)
-            col1.metric(
-                "MAPE (Hanya Data Aktual)", 
-                f"{mape:.1f}%",
-                help="Diukur hanya untuk tahun dengan data aktual"
-            )
+            st.success(f"✅ Data tersedia: {min_year}-{max_year}")
             
-            # Kategori MAPE
-            if mape < 10:
-                eval_msg = "SANGAT AKURAT"
-                color = "green"
-            elif mape < 20:
-                eval_msg = "BAIK"
-                color = "blue"
-            elif mape < 50:
-                eval_msg = "CUKUP"
-                color = "orange"
+            # ===== Perhitungan Prediksi & Metrik =====
+            validation_data['prediksi'] = validation_data['banjir'].rolling(3).mean().shift(1)
+            validation_data['error'] = validation_data['banjir'] - validation_data['prediksi']
+            validation_data['absolute_error'] = validation_data['error'].abs()
+            validation_data['squared_error'] = validation_data['error']**2
+            validation_data['mape'] = (validation_data['absolute_error'] / validation_data['banjir']) * 100
+
+            # ===== Tabel Utama =====
+            st.subheader("📊 Tabel Prediksi Banjir Tahunan")
+            display_df = validation_data.rename(columns={
+                'tahun': 'Tahun',
+                'banjir': 'Aktual',
+                'prediksi': 'Prediksi (3-MA)',
+                'error': 'Error',
+                'absolute_error': '|Error|',
+                'squared_error': 'Error²',
+                'mape': 'MAPE (%)'
+            })
+            st.dataframe(
+                display_df.style.format({
+                    'Aktual': '{:.0f}', 
+                    'Prediksi (3-MA)': '{:.1f}',
+                    'Error': '{:.1f}', 
+                    '|Error|': '{:.1f}', 
+                    'Error²': '{:.1f}', 
+                    'MAPE (%)': '{:.1f}'
+                })
+            )
+
+            # ===== Hitung Metrik Hanya untuk Tahun yang Bisa Diprediksi =====
+            eval_data = validation_data.dropna(subset=['prediksi'])
+            if not eval_data.empty:
+                # ===== Metrik Evaluasi =====
+                st.subheader("📈 Metrik Evaluasi Prediksi")
+                mae = eval_data['absolute_error'].mean()
+                mse = eval_data['squared_error'].mean()
+                rmse = np.sqrt(mse)
+                mape = eval_data['mape'].mean()
+                
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("MAE", f"{mae:.1f} ", help="Rata-rata error absolut")
+                col2.metric("MSE", f"{mse:.1f}", help="Rata-rata kuadrat error")
+                col3.metric("RMSE", f"{rmse:.1f} ", help="Akar MSE")
+                col4.metric("MAPE", f"{mape:.1f}%", help="Error persentase rata-rata")
+
+                # ===== Kategori MAPE =====
+                if mape < 10:
+                    eval_msg = "SANGAT AKURAT <10%"
+                    eval_color = "green"
+                elif mape < 20:
+                    eval_msg = "BAIK 10-20%"
+                    eval_color = "blue"
+                elif mape < 50:
+                    eval_msg = "CUKUP 20-50%"
+                    eval_color = "orange"
+                else:
+                    eval_msg = "TIDAK AKURAT >50%"
+                    eval_color = "red"
+                
+                st.markdown(f"**Kategori Akurasi:** <span style='color:{eval_color};font-weight:bold'>{eval_msg}</span>", unsafe_allow_html=True)
+
+                # ===== Detail Perhitungan =====
+                with st.expander("🧮 DETAIL PERHITUNGAN", expanded=False):
+                    # Bagian 1: Perhitungan Prediksi
+                    st.markdown("### 🔢 Perhitungan Prediksi")
+                    st.latex(r"""
+                    \text{Prediksi}_t = \frac{\text{Aktual}_{t-1} + \text{Aktual}_{t-2} + \text{Aktual}_{t-3}}{3}
+                    """)
+                    
+                    contoh_tahun = eval_data['tahun'].iloc[-1]
+                    tahun_prediksi = [contoh_tahun-1, contoh_tahun-2, contoh_tahun-3]
+                    train_data = validation_data[validation_data['tahun'].isin(tahun_prediksi)]
+                    
+                    st.write(f"**Contoh Prediksi {contoh_tahun}:**")
+                    st.write(f"= ({train_data['banjir'].iloc[0]} + {train_data['banjir'].iloc[1]} + {train_data['banjir'].iloc[2]}) / 3")
+                    st.write(f"= **{validation_data.loc[validation_data['tahun']==contoh_tahun, 'prediksi'].values[0]:.1f}** ")
+                    
+                    # Bagian 2: Perhitungan Error
+                    st.markdown("---\n### 📉 Perhitungan Error")
+                    st.latex(r"""
+                    \text{Error} = \text{Aktual} - \text{Prediksi}
+                    """)
+                    
+                    # Bagian 3: Perhitungan MAD/MAE
+                    st.markdown("---\n### 📊 Perhitungan Mean Absolute Deviation (MAD/MAE)")
+                    st.latex(r"""
+                    \text{MAE} = \frac{1}{n}\sum_{i=1}^n |\text{Error}_i|
+                    """)
+                    st.write("**Perhitungan:**")
+                    st.write("= (" + " + ".join([f"{x:.1f}" for x in eval_data['absolute_error']]) + f") / {len(eval_data)}")
+                    st.write(f"= **{mae:.1f}**")
+                    
+                    # Bagian 4: Perhitungan MSE
+                    st.markdown("---\n### 📊 Perhitungan Mean Squared Error (MSE)")
+                    st.latex(r"""
+                    \text{MSE} = \frac{1}{n}\sum_{i=1}^n (\text{Error}_i)^2
+                    """)
+                    st.write("**Perhitungan:**")
+                    st.write("= (" + " + ".join([f"{x:.1f}" for x in eval_data['squared_error']]) + f") / {len(eval_data)}")
+                    st.write(f"= **{mse:.1f}**")
+                    
+                    # Bagian 5: Perhitungan MAPE
+                    st.markdown("---\n### 📊 Perhitungan Mean Absolute Percentage Error (MAPE)")
+                    st.latex(r"""
+                    \text{MAPE} = \left(\frac{1}{n}\sum_{i=1}^n \frac{|\text{Error}_i|}{\text{Aktual}_i}\right) \times 100\%
+                    """)
+                    st.write("**Perhitungan:**")
+                    mape_calcs = []
+                    for _, row in eval_data.iterrows():
+                        mape_calcs.append(f"({row['absolute_error']:.1f}/{row['banjir']})")
+                    st.write("= (" + " + ".join(mape_calcs) + f") / {len(eval_data)} × 100%")
+                    st.write(f"= **{mape:.1f}%**")
+                    
+                    # Bagian 6: Penjelasan Kategori MAPE
+                    st.markdown("---\n### 📚 Kategori MAPE (Berdasarkan Skripsi Referensi)")
+                    st.table(pd.DataFrame({
+                        "MAPE (%)": ["<10", "10-20", "20-50", "++50"],
+                        "Kategori": ["Sangat Akurat", "Baik", "Cukup", "Tidak Akurat"],
+                        "Interpretasi": [
+                            "Prediksi hampir sempurna untuk keputusan strategis",
+                            "Reliabel untuk perencanaan operasional",
+                            "Dapat menunjukkan tren tetapi perlu verifikasi",
+                            "Tidak direkomendasikan untuk pengambilan keputusan"
+                        ]
+                    }))
+
+                # ===== Visualisasi =====
+                st.subheader("📉 Grafik Prediksi vs Aktual")
+                fig, ax = plt.subplots(figsize=(10,5))
+                
+                # Plot data aktual
+                ax.plot(validation_data['tahun'], validation_data['banjir'], 'bo-', label='Aktual')
+                
+                # Plot prediksi hanya untuk tahun yang bisa diprediksi
+                ax.plot(eval_data['tahun'], eval_data['prediksi'], 'r--o', label='Prediksi (3-MA)')
+                
+                # Anotasi nilai
+                for _, row in validation_data.iterrows():
+                    ax.text(row['tahun'], row['banjir']+2, f"{row['banjir']:.0f}", ha='center')
+                    if not pd.isna(row['prediksi']):
+                        ax.text(row['tahun'], row['prediksi']-2, f"{row['prediksi']:.1f}", 
+                            ha='center', color='red')
+                
+                ax.set_xlabel('Tahun')
+                ax.set_ylabel('Hari Banjir')
+                ax.legend()
+                ax.grid(True, linestyle='--', alpha=0.7)
+                st.pyplot(fig)
+                
             else:
-                eval_msg = "TIDAK AKURAT"
-                color = "red"
-            
-            col2.metric(
-                "Kategori Akurasi",
-                eval_msg,
-                help="Berdasarkan nilai MAPE"
-            )
-            
-            st.markdown(
-                f"<small>Evaluasi akurasi hanya mencakup periode {eval_data['tahun'].min()}-{eval_data['tahun'].max()}</small>",
-                unsafe_allow_html=True
-            )
-        
-        # ===== Detail Perhitungan =====
-        with st.expander("🔍 Detail Perhitungan Prediksi"):
-            st.markdown("**Metode:** Moving Average 3 Tahun")
-            st.latex(r"\text{Prediksi}_t = \frac{\text{Aktual}_{t-1} + \text{Aktual}_{t-2} + \text{Aktual}_{t-3}}{3}")
-            
-            st.markdown("**Contoh:**")
-            example_year = start_pred_year
-            st.write(f"Prediksi {example_year} = ({example_year-1} + {example_year-2} + {example_year-3}) / 3")
-            
-            try:
-                val1 = actual_data[actual_data['tahun'] == example_year-1]['banjir'].values[0]
-                val2 = actual_data[actual_data['tahun'] == example_year-2]['banjir'].values[0]
-                val3 = actual_data[actual_data['tahun'] == example_year-3]['banjir'].values[0]
-                st.write(f"= ({val1} + {val2} + {val3}) / 3 = {(val1+val2+val3)/3:.1f}")
-            except:
-                st.warning("Data tidak cukup untuk contoh perhitungan")
-
-    elif data is not None and len(data) < 4:
-        st.error("⚠️ Data tidak cukup! Butuh minimal 4 tahun data untuk prediksi.")
+                st.warning("⚠️ Belum ada tahun yang bisa diprediksi (butuh minimal 3 tahun data historis)")
+        else:
+            st.error(f"❌ Data tidak cukup! Butuh minimal 4 tahun data (tersedia: {len(available_years)} tahun)")
     else:
-        st.warning("Silakan upload data TMA terlebih dahulu di halaman Data TMA")
+        st.warning("""
+        ⚠️ Silakan proses data TMA terlebih dahulu di halaman **Data TMA**.
+        """)
