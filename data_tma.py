@@ -1,96 +1,78 @@
+# data_tma.py
 import streamlit as st
 import pandas as pd
-import os
+import sqlite3
 from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
-import shutil
-from matplotlib import gridspec
-
 
 def show():
     st.title("📊 Data Tinggi Muka Air (TMA)")
-
-    # Setup folder structure
-    os.makedirs("data/uploaded", exist_ok=True)
-    os.makedirs("data/processed", exist_ok=True)
-
-    def process_and_save_data(file_path, filename):
+    
+    # Fungsi untuk menyimpan data ke database
+    def save_to_db(df):
+        conn = sqlite3.connect('flood_prediction.db')
+        df.to_sql('tma_data', conn, if_exists='append', index=False)
+        conn.close()
+    
+    # Fungsi untuk memuat semua data dari database
+    def load_all_data():
+        conn = sqlite3.connect('flood_prediction.db')
+        query = "SELECT tanggal, jam_06, jam_12, jam_18, tma_min, tma_max, tma_rata FROM tma_data"
+        df = pd.read_sql(query, conn, parse_dates=['tanggal'])
+        conn.close()
+        return df
+    
+    # Fungsi untuk memproses file yang diupload
+    def process_uploaded_file(uploaded_file):
         try:
-            # Baca file
-            if filename.endswith('.csv'):
-                df = pd.read_csv(file_path, decimal=',', parse_dates=['tanggal'], dayfirst=True)
+            # Baca file sesuai format
+            if uploaded_file.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_file, decimal=',', parse_dates=['tanggal'], dayfirst=True)
             else:
-                df = pd.read_excel(file_path, decimal=',')
+                df = pd.read_excel(uploaded_file, decimal=',')
             
-            # Konversi format
+            # Pastikan kolom yang diperlukan ada
+            required_cols = ['tanggal', 'jam_06', 'jam_12', 'jam_18', 'tma_min', 'tma_max', 'tma_rata']
+            if not all(col in df.columns for col in required_cols):
+                raise ValueError("Format file tidak sesuai. Pastikan kolom yang diperlukan ada.")
+            
+            # Konversi format tanggal
             df['tanggal'] = pd.to_datetime(df['tanggal'], format='%d/%m/%Y', errors='coerce')
             
+            # Konversi nilai numerik
             numeric_cols = ['jam_06', 'jam_12', 'jam_18', 'tma_min', 'tma_max', 'tma_rata']
             for col in numeric_cols:
                 if df[col].dtype == object:
                     df[col] = df[col].astype(str).str.replace(',', '.').astype(float)
             
-            # Bersihkan data
+            # Bersihkan data yang hilang
             if df.isnull().values.any():
                 st.warning("Ada data yang hilang (NaN). Data akan dibersihkan otomatis.")
                 df = df.dropna()
-            
-            # Simpan file original dengan nama unik
-            original_filename = f"{df['tanggal'].dt.year.min()}_{filename}"
-            original_path = os.path.join("data/uploaded", original_filename)
-            shutil.copyfile(file_path, original_path)
             
             return df
         
         except Exception as e:
             raise ValueError(f"Gagal memproses file: {str(e)}")
 
-    def load_all_data():
-        try:
-            # Gabungkan semua file yang ada
-            all_files = [f for f in os.listdir("data/uploaded") if f.endswith(('.csv', '.xlsx'))]
-            dfs = []
-            
-            for file in all_files:
-                file_path = os.path.join("data/uploaded", file)
-                if file.endswith('.csv'):
-                    df = pd.read_csv(file_path, decimal=',', parse_dates=['tanggal'], dayfirst=True)
-                else:
-                    df = pd.read_excel(file_path, decimal=',')
-                
-                df['tanggal'] = pd.to_datetime(df['tanggal'], format='%d/%m/%Y', errors='coerce')
-                dfs.append(df)
-            
-            if dfs:
-                combined_df = pd.concat(dfs, ignore_index=True)
-                combined_df = combined_df.sort_values('tanggal')
-                return combined_df
-            return None
-            
-        except Exception as e:
-            st.error(f"Gagal memuat data tersimpan: {str(e)}")
-            return None
-
-    # Coba muat data yang sudah ada
+    # Coba muat data yang sudah ada dari database
     if 'current_data' not in st.session_state:
         saved_data = load_all_data()
-        if saved_data is not None:
+        if not saved_data.empty:
             st.session_state['current_data'] = saved_data
-            st.success("Data sebelumnya berhasil dimuat!")
+            st.success("Data sebelumnya berhasil dimuat dari database!")
 
     # Upload file baru
     uploaded_file = st.file_uploader("Upload file data TMA (CSV/Excel)", type=['xlsx', 'csv'])
 
     if uploaded_file is not None:
         try:
-            # Simpan sementara
-            temp_file = "temp_upload." + ("csv" if uploaded_file.name.endswith('.csv') else "xlsx")
-            with open(temp_file, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            
             # Proses data
-            new_data = process_and_save_data(temp_file, uploaded_file.name)
+            new_data = process_uploaded_file(uploaded_file)
+            
+            # Simpan ke database
+            save_to_db(new_data)
             
             # Gabungkan dengan data existing jika ada
             if 'current_data' in st.session_state:
@@ -101,18 +83,13 @@ def show():
                 combined_data = new_data
             
             st.session_state['current_data'] = combined_data
-            st.success(f"Data berhasil diproses dan disimpan! Tahun data: {new_data['tanggal'].dt.year.unique()}")
-            
-            # Hapus file temp
-            os.remove(temp_file)
+            st.success(f"Data berhasil diproses dan disimpan ke database! Tahun data: {new_data['tanggal'].dt.year.unique()}")
             
         except Exception as e:
             st.error(f"Error: {str(e)}")
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
 
     # Tampilkan data jika ada
-    if 'current_data' in st.session_state:
+    if 'current_data' in st.session_state and not st.session_state['current_data'].empty:
         df = st.session_state['current_data']
         
         # Tambahkan kolom analisis
@@ -282,13 +259,17 @@ def show():
         # Tombol manajemen data
         st.subheader("Manajemen Data")
         if st.button("♻️ Reset Semua Data"):
-            shutil.rmtree("data")
-            os.makedirs("data/uploaded", exist_ok=True)
-            os.makedirs("data/processed", exist_ok=True)
+            conn = sqlite3.connect('flood_prediction.db')
+            c = conn.cursor()
+            c.execute("DELETE FROM tma_data")
+            conn.commit()
+            conn.close()
             del st.session_state['current_data']
-            st.success("Data berhasil direset!")
+            st.success("Data berhasil direset dari database!")
             st.rerun()
         
         if st.button("🔄 Muat Ulang Data"):
             del st.session_state['current_data']
             st.rerun()
+    else:
+        st.warning("Belum ada data TMA yang tersimpan di database. Silakan upload file data TMA.")

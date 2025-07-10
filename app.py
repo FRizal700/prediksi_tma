@@ -2,6 +2,8 @@
 import streamlit as st
 import pandas as pd
 import os
+import sqlite3
+from datetime import datetime
 
 # Konfigurasi halaman - sembunyikan sidebar secara permanen
 st.set_page_config(
@@ -22,13 +24,46 @@ hide_streamlit_style = """
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-# Fungsi autentikasi (simpan di database di production)
+# Inisialisasi database
+def init_db():
+    conn = sqlite3.connect('flood_prediction.db')
+    c = conn.cursor()
+    
+    # Buat tabel users jika belum ada
+    c.execute('''CREATE TABLE IF NOT EXISTS users
+                 (username TEXT PRIMARY KEY, password TEXT)''')
+    
+    # Buat tabel tma_data jika belum ada
+    c.execute('''CREATE TABLE IF NOT EXISTS tma_data
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  tanggal TEXT,
+                  jam_06 REAL,
+                  jam_12 REAL,
+                  jam_18 REAL,
+                  tma_min REAL,
+                  tma_max REAL,
+                  tma_rata REAL)''')
+    
+    # Tambahkan user default jika belum ada
+    c.execute("SELECT COUNT(*) FROM users")
+    if c.fetchone()[0] == 0:
+        c.execute("INSERT INTO users VALUES (?, ?)", ('123', '123'))
+        c.execute("INSERT INTO users VALUES (?, ?)", ('user', 'user123'))
+    
+    conn.commit()
+    conn.close()
+
+# Panggil fungsi inisialisasi database
+init_db()
+
+# Fungsi autentikasi dari database
 def authenticate(username, password):
-    valid_users = {
-        "123": "123",
-        "user": "user123"
-    }
-    return valid_users.get(username) == password
+    conn = sqlite3.connect('flood_prediction.db')
+    c = conn.cursor()
+    c.execute("SELECT password FROM users WHERE username=?", (username,))
+    result = c.fetchone()
+    conn.close()
+    return result is not None and result[0] == password
 
 # Halaman Login
 def show_login():
