@@ -61,7 +61,7 @@ def show():
         saved_data = load_all_data()
         if not saved_data.empty:
             st.session_state['current_data'] = saved_data
-            st.success("Data sebelumnya berhasil dimuat dari database!")
+            st.success("berhasil dimuat!")
 
     # Upload file baru
     uploaded_file = st.file_uploader("Upload file data TMA (CSV/Excel)", type=['xlsx', 'csv'])
