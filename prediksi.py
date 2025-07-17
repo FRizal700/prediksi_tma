@@ -39,7 +39,7 @@ def show():
             validation_data['prediksi'] = validation_data['banjir'].rolling(3).mean().shift(1)
             validation_data['error'] = validation_data['banjir'] - validation_data['prediksi']
             validation_data['absolute_error'] = validation_data['error'].abs()
-            validation_data['squared_error'] = validation_data['error']**2
+            # validation_data['squared_error'] = validation_data['error']**2
             validation_data['mape'] = (validation_data['absolute_error'] / validation_data['banjir']) * 100
 
             # ===== Tabel Utama =====
@@ -50,7 +50,7 @@ def show():
                 'prediksi': 'Prediksi (3-MA)',
                 'error': 'Error',
                 'absolute_error': '|Error|',
-                'squared_error': 'Error²',
+                # 'squared_error': 'Error²',
                 'mape': 'MAPE (%)'
             })
             st.dataframe(
@@ -70,14 +70,14 @@ def show():
                 # ===== Metrik Evaluasi =====
                 st.subheader("📈 Metrik Evaluasi Prediksi")
                 mae = eval_data['absolute_error'].mean()
-                mse = eval_data['squared_error'].mean()
-                rmse = np.sqrt(mse)
+                # mse = eval_data['squared_error'].mean()
+                # rmse = np.sqrt(mse)
                 mape = eval_data['mape'].mean()
                 
                 col1, col2, col3, col4 = st.columns(4)
                 col1.metric("MAE", f"{mae:.1f} ", help="Rata-rata error absolut")
-                col2.metric("MSE", f"{mse:.1f}", help="Rata-rata kuadrat error")
-                col3.metric("RMSE", f"{rmse:.1f} ", help="Akar MSE")
+                # col2.metric("MSE", f"{mse:.1f}", help="Rata-rata kuadrat error")
+                # col3.metric("RMSE", f"{rmse:.1f} ", help="Akar MSE")
                 col4.metric("MAPE", f"{mape:.1f}%", help="Error persentase rata-rata")
 
                 # ===== Kategori MAPE =====
@@ -128,13 +128,13 @@ def show():
                     st.write(f"= **{mae:.1f}**")
                     
                     # Bagian 4: Perhitungan MSE
-                    st.markdown("---\n### 📊 Perhitungan Mean Squared Error (MSE)")
-                    st.latex(r"""
-                    \text{MSE} = \frac{1}{n}\sum_{i=1}^n (\text{Error}_i)^2
-                    """)
-                    st.write("**Perhitungan:**")
-                    st.write("= (" + " + ".join([f"{x:.1f}" for x in eval_data['squared_error']]) + f") / {len(eval_data)}")
-                    st.write(f"= **{mse:.1f}**")
+                    # st.markdown("---\n### 📊 Perhitungan Mean Squared Error (MSE)")
+                    # st.latex(r"""
+                    # \text{MSE} = \frac{1}{n}\sum_{i=1}^n (\text{Error}_i)^2
+                    # """)
+                    # st.write("**Perhitungan:**")
+                    # st.write("= (" + " + ".join([f"{x:.1f}" for x in eval_data['squared_error']]) + f") / {len(eval_data)}")
+                    # st.write(f"= **{mse:.1f}**")
                     
                     # Bagian 5: Perhitungan MAPE
                     st.markdown("---\n### 📊 Perhitungan Mean Absolute Percentage Error (MAPE)")
