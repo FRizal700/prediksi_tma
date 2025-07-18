@@ -48,7 +48,7 @@ def show():
             
             # Bersihkan data yang hilang
             if df.isnull().values.any():
-                st.warning("Ada data yang hilang (NaN). Data akan dibersihkan otomatis.")
+                st.warning("Ada data yang kosong. Data akan dibersihkan otomatis.")
                 df = df.dropna()
             
             return df
@@ -83,12 +83,12 @@ def show():
                 combined_data = new_data
             
             st.session_state['current_data'] = combined_data
-            st.success(f"Data berhasil diproses dan disimpan ke database! Tahun data: {new_data['tanggal'].dt.year.unique()}")
+            st.success(f"Data berhasil diupload dan disimpan ke database! Tahun data: {new_data['tanggal'].dt.year.unique()}")
             
         except Exception as e:
             st.error(f"Error: {str(e)}")
 
-    # Tampilkan data jika ada
+    # Tampilkan data 
     if 'current_data' in st.session_state and not st.session_state['current_data'].empty:
         df = st.session_state['current_data']
         
