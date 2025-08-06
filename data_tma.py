@@ -193,7 +193,7 @@ def show():
 
             # Hitung statistik banjir bulanan
             st.subheader("Statistik Banjir Bulanan")
-            threshold = st.slider("Threshold Banjir (meter)", 1.0, 3.0, 1.6, 0.1, key='monthly_threshold')
+            threshold = st.slider("Threshold Banjir (meter)", 1.0, 3.0, 1.60, 0.1, key='monthly_threshold')
             
             flood_days = filtered_data[filtered_data['tma_max'] > threshold]
             st.metric("Hari dengan Banjir", f"{len(flood_days)} hari")
@@ -211,7 +211,7 @@ def show():
             
             # Statistik banjir tahunan
             st.subheader(f"Statistik Banjir Tahun {analysis_year}")
-            annual_threshold = st.slider("Threshold Banjir (meter)", 1.0, 3.0, 1.6, 0.1, key='annual_threshold')
+            annual_threshold = st.slider("Threshold Banjir (meter)", 1.0, 3.0, 1.60, 0.1, key='annual_threshold')
             
             # Hitung statistik per bulan
             monthly_stats = year_data.groupby(['bulan', 'nama_bulan']).agg(

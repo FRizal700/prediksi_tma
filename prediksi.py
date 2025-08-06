@@ -21,7 +21,7 @@ def show():
 
     if 'current_data' in st.session_state:
         df = st.session_state['current_data']
-        df['banjir'] = (df['tma_max'] > 1.6).astype(int)
+        df['banjir'] = (df['tma_max'] > 1.60).astype(int)
         yearly_floods = df.groupby('tahun')['banjir'].sum().reset_index()
         
         # ===== Otomatis deteksi tahun tersedia =====
@@ -29,19 +29,29 @@ def show():
         min_year = min(available_years)
         max_year = max(available_years)
         
+        # ===== Pilihan Periode Moving Average =====
+        st.subheader("⚙️ Pengaturan Prediksi")
+        ma_period = st.selectbox(
+            "Pilih jumlah periode Moving Average:",
+            ["3 periode", "4 periode"],
+            index=0
+        )
+        window_size = 3 if ma_period == "3 periode" else 4
+        
         # ===== Hitung range tahun prediksi =====
-        if len(available_years) >= 4:  # Minimal 3 tahun training + 1 tahun prediksi
+        min_required_years = window_size + 1  # Minimal n tahun training + 1 tahun prediksi
+        if len(available_years) >= min_required_years:
             validation_data = yearly_floods.copy()
             
             st.success(f"✅ Data tersedia: {min_year}-{max_year}")
             
             # ===== Perhitungan Prediksi & Metrik =====
-            validation_data['prediksi'] = validation_data['banjir'].rolling(3).mean().shift(1)
+            validation_data['prediksi'] = validation_data['banjir'].rolling(window_size).mean().shift(1)
             
             # ===== Tambahkan prediksi untuk tahun berikutnya =====
-            if len(validation_data) >= 3:
-                last_three_years = validation_data['banjir'].tail(3).values
-                next_year_pred = np.mean(last_three_years)
+            if len(validation_data) >= window_size:
+                last_years = validation_data['banjir'].tail(window_size).values
+                next_year_pred = np.mean(last_years)
                 next_year = max_year + 1
                 
                 # Tambahkan baris prediksi tahun berikutnya
@@ -61,7 +71,7 @@ def show():
             display_df = validation_data.rename(columns={
                 'tahun': 'Tahun',
                 'banjir': 'Aktual',
-                'prediksi': 'Prediksi (3-Periode)',
+                'prediksi': f'Prediksi ({window_size}-Periode)',
                 'error': 'Error',
                 'absolute_error': '|Error|',
                 'mape': 'MAPE (%)'
@@ -69,7 +79,7 @@ def show():
             st.dataframe(
                 display_df.style.format({
                     'Aktual': '{:.0f}', 
-                    'Prediksi (3-Periode)': '{:.1f}',
+                    f'Prediksi ({window_size}-Periode)': '{:.1f}',
                     'Error': '{:.1f}', 
                     '|Error|': '{:.1f}', 
                     'MAPE (%)': '{:.1f}'
@@ -109,16 +119,16 @@ def show():
                 with st.expander("🧮 DETAIL PERHITUNGAN", expanded=False):
                     # Bagian 1: Perhitungan Prediksi
                     st.markdown("### 🔢 Perhitungan Prediksi")
-                    st.latex(r"""
-                    \text{Prediksi}_t = \frac{\text{Aktual}_{t-1} + \text{Aktual}_{t-2} + \text{Aktual}_{t-3}}{3}
+                    st.latex(fr"""
+                    \text{{Prediksi}}_t = \frac{{\text{{Aktual}}_{{t-1}} + \text{{Aktual}}_{{t-2}} + \cdots + \text{{Aktual}}_{{t-{window_size}}}}}{{{window_size}}}
                     """)
                     
                     contoh_tahun = eval_data['tahun'].iloc[-1]
-                    tahun_prediksi = [contoh_tahun-1, contoh_tahun-2, contoh_tahun-3]
+                    tahun_prediksi = [contoh_tahun-i for i in range(1, window_size+1)]
                     train_data = validation_data[validation_data['tahun'].isin(tahun_prediksi)]
                     
                     st.write(f"**Contoh Prediksi {contoh_tahun}:**")
-                    st.write(f"= ({train_data['banjir'].iloc[0]} + {train_data['banjir'].iloc[1]} + {train_data['banjir'].iloc[2]}) / 3")
+                    st.write("= (" + " + ".join([f"{x:.0f}" for x in train_data['banjir']]) + f") / {window_size}")
                     st.write(f"= **{validation_data.loc[validation_data['tahun']==contoh_tahun, 'prediksi'].values[0]:.1f}** ")
                     
                     # Bagian 2: Perhitungan Error
@@ -169,7 +179,7 @@ def show():
                 ax.plot(validation_data['tahun'], validation_data['banjir'], 'bo-', label='Aktual')
                 
                 # Plot prediksi untuk tahun yang bisa diprediksi
-                ax.plot(eval_data['tahun'], eval_data['prediksi'], 'r--o', label='Prediksi (3-MA)')
+                ax.plot(eval_data['tahun'], eval_data['prediksi'], 'r--o', label=f'Prediksi ({window_size}-MA)')
                 
                 # Plot prediksi tahun berikutnya jika ada
                 if len(validation_data) > len(eval_data):
@@ -194,12 +204,12 @@ def show():
                 
                 # Keterangan prediksi tahun depan
                 if len(validation_data) > len(eval_data):
-                    st.markdown("> *Prediksi untuk tahun depan menggunakan metode 3-MA (Moving Average 3 tahun terakhir)*")
+                    st.markdown(f"> *Prediksi untuk tahun depan menggunakan metode {window_size}-MA (Moving Average {window_size} tahun terakhir)*")
                 
             else:
-                st.warning("⚠️ Belum ada tahun yang bisa diprediksi (butuh minimal 3 tahun data historis)")
+                st.warning(f"⚠️ Belum ada tahun yang bisa diprediksi (butuh minimal {window_size} tahun data historis)")
         else:
-            st.error(f"❌ Data tidak cukup! Butuh minimal 4 tahun data (tersedia: {len(available_years)} tahun)")
+            st.error(f"❌ Data tidak cukup! Butuh minimal {min_required_years} tahun data (tersedia: {len(available_years)} tahun)")
     else:
         st.warning("""
         ⚠️ Silakan proses data TMA terlebih dahulu di halaman **Data TMA**.
